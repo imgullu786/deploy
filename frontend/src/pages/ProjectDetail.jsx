@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Settings, Globe, Github, Trash2 } from 'lucide-react';
+import { ArrowLeft, Play, Settings, Globe, Github, Trash2, Edit3 } from 'lucide-react';
 import { projectService } from '../services/projectService';
 import LogsPanel from '../components/LogsPanel';
 import { io } from 'socket.io-client';
@@ -14,6 +14,13 @@ const ProjectDetail = () => {
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState('');
   const [socket, setSocket] = useState(null);
+  const [showBuildConfig, setShowBuildConfig] = useState(false);
+  const [editingConfig, setEditingConfig] = useState(false);
+  const [buildConfig, setBuildConfig] = useState({
+    rootDirectory: '.',
+    buildCommand: 'npm run build',
+    publishDirectory: 'dist',
+  });
 
   useEffect(() => {
     loadProject();
@@ -47,6 +54,11 @@ const ProjectDetail = () => {
     try {
       const projectData = await projectService.getProject(id);
       setProject(projectData);
+      setBuildConfig(projectData.buildConfig || {
+        rootDirectory: '.',
+        buildCommand: 'npm run build',
+        publishDirectory: 'dist',
+      });
     } catch (err) {
       setError('Failed to load project');
     } finally {
@@ -86,6 +98,26 @@ const ProjectDetail = () => {
     }
   };
 
+  const handleSaveBuildConfig = async () => {
+    try {
+      const updatedProject = await projectService.updateProject(id, {
+        ...project,
+        buildConfig,
+      });
+      setProject(updatedProject);
+      setEditingConfig(false);
+      setError('');
+    } catch (err) {
+      setError('Failed to update build configuration');
+    }
+  };
+
+  const handleBuildConfigChange = (field, value) => {
+    setBuildConfig(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -189,6 +221,94 @@ const ProjectDetail = () => {
                   </div>
                 </div>
               )}
+
+              {/* Build Configuration */}
+              <div className="border-t border-gray-200 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-700">Build Configuration</h3>
+                  <button
+                    onClick={() => setEditingConfig(!editingConfig)}
+                    className="text-indigo-600 hover:text-purple-600 text-sm font-medium flex items-center space-x-1 transition-colors"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    <span>{editingConfig ? 'Cancel' : 'Edit'}</span>
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1">Root Directory</p>
+                    {editingConfig ? (
+                      <input
+                        type="text"
+                        value={buildConfig.rootDirectory}
+                        onChange={(e) => handleBuildConfigChange('rootDirectory', e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-800 font-mono bg-gray-50 px-2 py-1 rounded">
+                        {project.buildConfig?.rootDirectory || '.'}
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1">Build Command</p>
+                    {editingConfig ? (
+                      <input
+                        type="text"
+                        value={buildConfig.buildCommand}
+                        onChange={(e) => handleBuildConfigChange('buildCommand', e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-800 font-mono bg-gray-50 px-2 py-1 rounded">
+                        {project.buildConfig?.buildCommand || 'npm run build'}
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <p className="text-xs font-medium text-gray-600 mb-1">Publish Directory</p>
+                    {editingConfig ? (
+                      <input
+                        type="text"
+                        value={buildConfig.publishDirectory}
+                        onChange={(e) => handleBuildConfigChange('publishDirectory', e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-800 font-mono bg-gray-50 px-2 py-1 rounded">
+                        {project.buildConfig?.publishDirectory || 'dist'}
+                      </p>
+                    )}
+                  </div>
+                  
+                  {editingConfig && (
+                    <div className="flex space-x-2 pt-2">
+                      <button
+                        onClick={handleSaveBuildConfig}
+                        className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingConfig(false);
+                          setBuildConfig(project.buildConfig || {
+                            rootDirectory: '.',
+                            buildCommand: 'npm run build',
+                            publishDirectory: 'dist',
+                          });
+                        }}
+                        className="px-3 py-1.5 text-sm rounded bg-gray-200 text-gray-700 font-medium hover:bg-gray-300 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

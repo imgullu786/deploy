@@ -89,10 +89,14 @@ class DeploymentService {
   }
 
   async detectBuildType(projectPath, projectId) {
+    const project = await Project.findById(projectId);
+    const { rootDirectory } = project.buildConfig;
+    const workingDir = path.join(projectPath, rootDirectory);
+    
     this.emitLog(projectId, 'info', 'Detecting project type...');
 
     try {
-      const packageJsonPath = path.join(projectPath, 'package.json');
+      const packageJsonPath = path.join(workingDir, 'package.json');
       const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
 
       // Check for static site indicators
@@ -113,14 +117,20 @@ class DeploymentService {
   }
 
   async buildProject(projectPath, projectId) {
+    const project = await Project.findById(projectId);
+    const { rootDirectory, buildCommand } = project.buildConfig;
+    
+    const workingDir = path.join(projectPath, rootDirectory);
+    
+    this.emitLog(projectId, 'info', `Working in directory: ${rootDirectory}`);
     this.emitLog(projectId, 'info', 'Installing dependencies...');
     
     try {
-      await execAsync('npm install', { cwd: projectPath });
+      await execAsync('npm install', { cwd: workingDir });
       this.emitLog(projectId, 'success', 'Dependencies installed');
 
-      this.emitLog(projectId, 'info', 'Building project...');
-      await execAsync('npm run build', { cwd: projectPath });
+      this.emitLog(projectId, 'info', `Running build command: ${buildCommand}`);
+      await execAsync(buildCommand, { cwd: workingDir });
       this.emitLog(projectId, 'success', 'Project built successfully');
     } catch (error) {
       throw new Error(`Build failed: ${error.message}`);
@@ -130,7 +140,9 @@ class DeploymentService {
   async deployStatic(projectPath, projectId, project) {
     this.emitLog(projectId, 'info', 'Deploying static files to S3...');
 
-    const distPath = path.join(projectPath, 'dist');
+    const { rootDirectory, publishDirectory } = project.buildConfig;
+    const workingDir = path.join(projectPath, rootDirectory);
+    const distPath = path.join(workingDir, publishDirectory);
     const s3Path = `projects/${project.name}`;
 
     try {
