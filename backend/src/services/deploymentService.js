@@ -37,11 +37,9 @@ class DeploymentService {
       // Clone repository
       await this.cloneRepository(project.githubRepo, projectPath, project._id);
 
-      // Detect build type
-      const buildType = await this.detectBuildType(projectPath, project._id);
-      
-      // Update project with build type
-      await Project.findByIdAndUpdate(project._id, { buildType });
+      // Use the build type specified by the user
+      const buildType = project.buildType;
+      this.emitLog(project._id, 'info', `Building as ${buildType} application`);
 
       // Build project
       await this.buildProject(projectPath, project._id);
@@ -86,34 +84,6 @@ class DeploymentService {
     await git.clone(repoUrl, targetPath);
     
     this.emitLog(projectId, 'success', 'Repository cloned successfully');
-  }
-
-  async detectBuildType(projectPath, projectId) {
-    const project = await Project.findById(projectId);
-    const { rootDirectory } = project.buildConfig;
-    const workingDir = path.join(projectPath, rootDirectory);
-    
-    this.emitLog(projectId, 'info', 'Detecting project type...');
-
-    try {
-      const packageJsonPath = path.join(workingDir, 'package.json');
-      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
-
-      // Check for static site indicators
-      const isStatic = packageJson.scripts?.build && 
-        (packageJson.dependencies?.react || 
-         packageJson.dependencies?.vue || 
-         packageJson.dependencies?.vite ||
-         packageJson.devDependencies?.vite);
-
-      const buildType = isStatic ? 'static' : 'server';
-      this.emitLog(projectId, 'success', `Detected ${buildType} application`);
-      
-      return buildType;
-    } catch (error) {
-      this.emitLog(projectId, 'warn', 'Could not detect project type, defaulting to server');
-      return 'server';
-    }
   }
 
   async buildProject(projectPath, projectId) {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, Github, Globe, Activity, XCircle, Settings } from 'lucide-react';
+import { ExternalLink, Github, Globe, Activity, XCircle, Settings, Server } from 'lucide-react';
 
 const ProjectCard = ({ project }) => {
   const getStatusStyles = (status) => {
@@ -73,10 +73,14 @@ const ProjectCard = ({ project }) => {
         )}
         {project.buildConfig && (
           <div className="flex items-center space-x-2 text-sm text-gray-700">
-            <Settings className="h-4 w-4 text-gray-500" />
+            {project.buildType === 'static' ? (
+              <Globe className="h-4 w-4 text-gray-500" />
+            ) : (
+              <Server className="h-4 w-4 text-gray-500" />
+            )}
             <span className="truncate font-mono text-xs">
-              {project.buildConfig.rootDirectory !== '.' ? `${project.buildConfig.rootDirectory}/` : ''}
-              {project.buildConfig.publishDirectory}
+              {project.buildType} • {project.buildConfig.rootDirectory !== '.' ? `${project.buildConfig.rootDirectory}/` : ''}
+              {project.buildType === 'static' ? project.buildConfig.publishDirectory : 'server'}
             </span>
           </div>
         )}

@@ -14,6 +14,7 @@ const deploymentSchema = new mongoose.Schema({
     type: String,
     enum: ['static', 'server'],
     required: true,
+    required: true,
   },
   containerId: String,
   s3Path: String,
