@@ -16,6 +16,7 @@ const CreateProject = () => {
       buildCommand: 'npm run build',
       publishDirectory: 'dist',
     },
+    envVars: {},
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -68,6 +69,52 @@ const CreateProject = () => {
         buildCommand: 'npm start',
         publishDirectory: '.',
       }
+    }));
+  };
+
+  const addEnvVar = () => {
+    const key = `ENV_VAR_${Object.keys(formData.envVars).length + 1}`;
+    setFormData(prev => ({
+      ...prev,
+      envVars: {
+        ...prev.envVars,
+        [key]: '',
+      },
+    }));
+  };
+
+  const removeEnvVar = (key) => {
+    setFormData(prev => {
+      const newEnvVars = { ...prev.envVars };
+      delete newEnvVars[key];
+      return {
+        ...prev,
+        envVars: newEnvVars,
+      };
+    });
+  };
+
+  const updateEnvVar = (oldKey, newKey, value) => {
+    setFormData(prev => {
+      const newEnvVars = { ...prev.envVars };
+      if (oldKey !== newKey) {
+        delete newEnvVars[oldKey];
+      }
+      newEnvVars[newKey] = value;
+      return {
+        ...prev,
+        envVars: newEnvVars,
+      };
+    });
+  };
+
+  const addCommonEnvVar = (key, value = '') => {
+    setFormData(prev => ({
+      ...prev,
+      envVars: {
+        ...prev.envVars,
+        [key]: value,
+      },
     }));
   };
 
@@ -407,6 +454,95 @@ const CreateProject = () => {
               </div>
             </div>
           </div>
+
+          {/* Environment Variables (only for server projects) */}
+          {formData.buildType === 'server' && (
+            <div className="bg-white/90 backdrop-blur-xl p-6 rounded-xl shadow-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <Settings className="h-5 w-5 text-indigo-600" />
+                  <h2 className="text-xl font-semibold text-gray-900">Environment Variables</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={addEnvVar}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition-colors font-medium"
+                >
+                  Add Variable
+                </button>
+              </div>
+
+              {/* Common Environment Variables */}
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-gray-700 mb-2">Quick Add Common Variables</p>
+                <div className="flex flex-wrap gap-2">
+                  {['NODE_ENV', 'PORT', 'DATABASE_URL', 'JWT_SECRET', 'API_KEY'].map(envKey => (
+                    <button
+                      key={envKey}
+                      type="button"
+                      onClick={() => addCommonEnvVar(envKey)}
+                      disabled={formData.envVars.hasOwnProperty(envKey)}
+                      className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {envKey}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Environment Variables List */}
+              <div className="space-y-3">
+                {Object.entries(formData.envVars).map(([key, value]) => (
+                  <div key={key} className="flex items-center space-x-3">
+                    <input
+                      type="text"
+                      value={key}
+                      onChange={(e) => updateEnvVar(key, e.target.value, value)}
+                      placeholder="VARIABLE_NAME"
+                      className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 font-mono text-sm"
+                    />
+                    <span className="text-gray-400 font-mono">=</span>
+                    <input
+                      type="text"
+                      value={value}
+                      onChange={(e) => updateEnvVar(key, key, e.target.value)}
+                      placeholder="value"
+                      className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeEnvVar(key)}
+                      className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                
+                {Object.keys(formData.envVars).length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Settings className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm">No environment variables configured</p>
+                    <p className="text-xs">Click "Add Variable" to add environment variables for your server</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Environment Variables Info */}
+              <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                <div className="flex items-start space-x-3">
+                  <Settings className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-semibold text-blue-900 mb-1">Environment Variables</h4>
+                    <p className="text-sm text-blue-700">
+                      These variables will be available in your server application at runtime. 
+                      Common examples include database URLs, API keys, and configuration settings.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex justify-end space-x-4">
