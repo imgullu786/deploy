@@ -15,6 +15,8 @@ class DeploymentService {
   constructor() {
     this.tempDir = '/tmp/deployments';
     this.ensureTempDir();
+    // Make this service globally available for Docker service
+    global.deploymentService = this;
   }
 
   async ensureTempDir() {
@@ -41,8 +43,13 @@ class DeploymentService {
       const buildType = project.buildType;
       this.emitLog(project._id, 'info', `Building as ${buildType} application`);
 
-      // Build project
-      await this.buildProject(projectPath, project._id);
+      // Build project (different for static vs server)
+      if (buildType === 'static') {
+        await this.buildProject(projectPath, project._id);
+      } else {
+        // For server apps, we'll build inside Docker
+        this.emitLog(project._id, 'info', 'Preparing server application...');
+      }
 
       let deployUrl, s3Path;
       if (buildType === 'static') {
@@ -52,7 +59,9 @@ class DeploymentService {
         s3Path = result.s3Path;
       } else {
         // Deploy as Docker container
-        deployUrl = await this.deployServer(projectPath, project._id);
+        const result = await this.deployServer(projectPath, project._id, project);
+        deployUrl = result.deployUrl;
+        containerId = result.containerId;
       }
 
       // Update project with deployment info
@@ -60,6 +69,7 @@ class DeploymentService {
         status: 'running',
         deployUrl,
         s3Path,
+        containerId,
         buildType,
         completedAt: new Date(),
       });
@@ -125,14 +135,21 @@ class DeploymentService {
     }
   }
 
-  async deployServer(projectPath, projectId) {
+  async deployServer(projectPath, projectId, project) {
     this.emitLog(projectId, 'info', 'Building and deploying Docker container...');
 
     try {
-      const containerId = await dockerService.buildAndDeploy(projectPath, projectId);
-      const deployUrl = `https://${projectId}.${process.env.BASE_DOMAIN}`;
+      // Get environment variables from project
+      const envVars = project.envVars || {};
+      
+      const result = await dockerService.buildAndDeploy(projectPath, projectId, envVars);
+      const deployUrl = `https://${project.subDomain}.${process.env.BASE_DOMAIN || 'localhost:' + result.port}`;
       this.emitLog(projectId, 'success', 'Container deployed successfully');
-      return deployUrl;
+      return {
+        deployUrl,
+        containerId: result.containerId,
+        port: result.port,
+      };
     } catch (error) {
       throw new Error(`Container deployment failed: ${error.message}`);
     }
@@ -146,6 +163,7 @@ class DeploymentService {
   async updateProjectDeployment(projectId, deploymentData) {
     await Project.findByIdAndUpdate(projectId, {
       s3Path: deploymentData.s3Path,
+      containerId: deploymentData.containerId,
       status: deploymentData.status,
       deployUrl: deploymentData.deployUrl,
       buildType: deploymentData.buildType,
@@ -195,8 +213,9 @@ class DeploymentService {
     }
 
     // Stop and remove Docker container
-    if (project.buildType === 'server' && project.currentDeployment?.containerId) {
-      await dockerService.stopContainer(project.currentDeployment.containerId);
+    if (project.buildType === 'server' && (project.currentDeployment?.containerId || project.containerId)) {
+      const containerId = project.currentDeployment?.containerId || project.containerId;
+      await dockerService.stopContainer(containerId);
     }
   }
 }

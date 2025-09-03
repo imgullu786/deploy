@@ -58,6 +58,11 @@ const projectSchema = new mongoose.Schema({
   unique: true,
   trim: true,
 },
+  envVars: {
+    type: Map,
+    of: String,
+    default: new Map(),
+  },
   buildConfig: {
     rootDirectory: {
       type: String,
@@ -87,6 +92,7 @@ const projectSchema = new mongoose.Schema({
   },
   currentDeployment: deploymentSchema,
   deployments: [deploymentSchema],
+  containerId: String, // For server deployments
   deployUrl: String,
   buildType: {
     type: String,
