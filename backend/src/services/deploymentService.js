@@ -140,7 +140,15 @@ class DeploymentService {
 
     try {
       // Get environment variables from project
-      const envVars = project.envVars || {};
+      const envVars = {};
+      if (project.envVars && project.envVars instanceof Map) {
+        // Convert Map to object
+        for (let [key, value] of project.envVars) {
+          envVars[key] = value;
+        }
+      } else if (project.envVars && typeof project.envVars === 'object') {
+        Object.assign(envVars, project.envVars);
+      }
       
       const result = await dockerService.buildAndDeploy(projectPath, projectId, envVars);
       const deployUrl = `https://${project.subDomain}.${process.env.BASE_DOMAIN || 'localhost:' + result.port}`;

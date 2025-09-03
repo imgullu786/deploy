@@ -30,7 +30,7 @@ export const getProject = async (req, res) => {
 
 export const createProject = async (req, res) => {
   try {
-    const { name, description, githubRepo, subDomain, buildConfig, buildType } = req.body;
+    const { name, description, githubRepo, subDomain, buildConfig, buildType, envVars } = req.body;
 
     const project = new Project({
       name,
@@ -39,6 +39,7 @@ export const createProject = async (req, res) => {
       subDomain,
       buildConfig: buildConfig || {},
       buildType,
+      envVars: envVars || {},
       owner: req.user._id,
     });
 
@@ -55,11 +56,11 @@ export const createProject = async (req, res) => {
 
 export const updateProject = async (req, res) => {
   try {
-    const { name, description, githubRepo, subDomain, buildConfig, buildType } = req.body;
+    const { name, description, githubRepo, subDomain, buildConfig, buildType, envVars } = req.body;
 
     const project = await Project.findOneAndUpdate(
       { _id: req.params.id, owner: req.user._id },
-      { name, description, githubRepo, subDomain, buildConfig, buildType },
+      { name, description, githubRepo, subDomain, buildConfig, buildType, envVars },
       { new: true, runValidators: true }
     );
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Settings, Globe, Github, Trash2, Edit3 } from 'lucide-react';
+import { ArrowLeft, Play, Settings, Globe, Github, Trash2, Edit3, XCircle } from 'lucide-react';
 import { projectService } from '../services/projectService';
 import LogsPanel from '../components/LogsPanel';
 import { io } from 'socket.io-client';

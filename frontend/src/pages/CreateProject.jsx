@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Server, Globe, Github, Settings, Zap } from 'lucide-react';
+import { ArrowLeft, Server, Globe, Github, Settings, Zap, XCircle } from 'lucide-react';
 import { projectService } from '../services/projectService';
 
 const CreateProject = () => {
