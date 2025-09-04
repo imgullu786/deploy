@@ -17,6 +17,9 @@ class DockerService {
       const imageName = `project-${projectId}:latest`;
       await this.buildImage(projectPath, imageName, projectId);
 
+      // Stop existing container if it exists
+      await this.stopExistingContainer(projectId);
+
       // Run container with environment variables
       const containerInfo = await this.runContainer(imageName, projectId, envVars);
 
@@ -31,10 +34,12 @@ class DockerService {
     
     try {
       await fs.access(dockerfilePath);
+      this.emitBuildLog('info', 'Using existing Dockerfile');
     } catch {
       // Create default Dockerfile for Node.js apps
-      const dockerfile = `
-FROM node:18-alpine
+      this.emitBuildLog('info', 'Creating default Dockerfile for Node.js application');
+      
+      const dockerfile = `FROM node:18-alpine
 
 WORKDIR /app
 
@@ -63,14 +68,16 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
   CMD curl -f http://localhost:3000/health || exit 1
 
 # Start the application
-CMD ["npm", "start"]
-      `.trim();
+CMD ["npm", "start"]`;
 
       await fs.writeFile(dockerfilePath, dockerfile);
+      this.emitBuildLog('success', 'Dockerfile created');
     }
   }
 
   async buildImage(projectPath, imageName, projectId) {
+    this.emitBuildLog('info', `Building Docker image: ${imageName}`);
+    
     return new Promise((resolve, reject) => {
       const buildOptions = {
         t: imageName,
@@ -96,11 +103,13 @@ CMD ["npm", "start"]
                 try {
                   const parsed = JSON.parse(line);
                   if (parsed.stream) {
-                    this.emitBuildLog(projectId, parsed.stream.trim());
+                    this.emitBuildLog('info', parsed.stream.trim());
                   }
                 } catch {
-                  // Not JSON, emit as is
-                  this.emitBuildLog(projectId, line.trim());
+                  // Not JSON, emit as is if it's meaningful
+                  if (line.includes('Step') || line.includes('Successfully')) {
+                    this.emitBuildLog('info', line.trim());
+                  }
                 }
               }
             });
@@ -110,25 +119,55 @@ CMD ["npm", "start"]
         });
 
         stream.on('end', () => {
+          this.emitBuildLog('success', 'Docker image built successfully');
           resolve(buildOutput);
         });
         
         stream.on('error', (error) => {
+          this.emitBuildLog('error', `Build failed: ${error.message}`);
           reject(error);
         });
       });
     });
   }
 
+  async stopExistingContainer(projectId) {
+    try {
+      const containers = await this.docker.listContainers({ all: true });
+      const existingContainer = containers.find(container => 
+        container.Names.some(name => name.includes(`project-${projectId}`))
+      );
+
+      if (existingContainer) {
+        this.emitBuildLog('info', 'Stopping existing container...');
+        const container = this.docker.getContainer(existingContainer.Id);
+        
+        if (existingContainer.State === 'running') {
+          await container.stop({ t: 10 });
+        }
+        await container.remove();
+        this.emitBuildLog('success', 'Existing container stopped and removed');
+      }
+    } catch (error) {
+      console.error('Error stopping existing container:', error);
+    }
+  }
+
   async runContainer(imageName, projectId, envVars = {}) {
     // Get next available port
     const hostPort = await this.getNextAvailablePort();
+    
+    this.emitBuildLog('info', `Starting container on port ${hostPort}`);
     
     // Prepare environment variables
     const envArray = Object.entries(envVars).map(([key, value]) => `${key}=${value}`);
     
     // Add default PORT environment variable
     envArray.push(`PORT=3000`);
+
+    if (Object.keys(envVars).length > 0) {
+      this.emitBuildLog('info', `Environment variables: ${Object.keys(envVars).join(', ')}`);
+    }
 
     const containerConfig = {
       Image: imageName,
@@ -154,14 +193,10 @@ CMD ["npm", "start"]
     const container = await this.docker.createContainer(containerConfig);
     await container.start();
 
-    // Wait a moment for container to start
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    this.emitBuildLog('info', 'Container started, waiting for health check...');
 
-    // Check if container is running
-    const containerInfo = await container.inspect();
-    if (!containerInfo.State.Running) {
-      throw new Error('Container failed to start');
-    }
+    // Wait for container to be ready
+    await this.waitForContainer(container, projectId);
 
     return {
       containerId: container.id,
@@ -170,10 +205,41 @@ CMD ["npm", "start"]
     };
   }
 
-  async getNextAvailablePort() {
-    const port = this.portCounter++;
+  async waitForContainer(container, projectId, maxWait = 30000) {
+    const startTime = Date.now();
     
-    // Check if port is actually available
+    while (Date.now() - startTime < maxWait) {
+      try {
+        const containerInfo = await container.inspect();
+        
+        if (!containerInfo.State.Running) {
+          // Get container logs to see what went wrong
+          const logs = await container.logs({
+            stdout: true,
+            stderr: true,
+            tail: 20,
+          });
+          throw new Error(`Container failed to start. Logs: ${logs.toString()}`);
+        }
+
+        // Container is running, give it a moment to start the app
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        this.emitBuildLog('success', 'Container is running and ready');
+        return;
+        
+      } catch (error) {
+        if (error.message.includes('Container failed to start')) {
+          throw error;
+        }
+        // Wait and retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    throw new Error('Container health check timeout');
+  }
+
+  async getNextAvailablePort() {
     try {
       const containers = await this.docker.listContainers();
       const usedPorts = containers
@@ -187,7 +253,7 @@ CMD ["npm", "start"]
       return this.portCounter++;
     } catch (error) {
       console.error('Error checking ports:', error);
-      return port;
+      return this.portCounter++;
     }
   }
 
@@ -232,11 +298,15 @@ CMD ["npm", "start"]
     }
   }
 
-  emitBuildLog(projectId, message) {
+  emitBuildLog(level, message) {
     // This will be called from deploymentService
-    if (global.deploymentService) {
-      global.deploymentService.emitLog(projectId, 'info', message);
+    if (global.deploymentService && this.currentProjectId) {
+      global.deploymentService.emitLog(this.currentProjectId, level, message);
     }
+  }
+
+  setCurrentProjectId(projectId) {
+    this.currentProjectId = projectId;
   }
 }
 

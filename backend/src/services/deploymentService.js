@@ -40,28 +40,24 @@ class DeploymentService {
       await this.cloneRepository(project.githubRepo, projectPath, project._id);
 
       // Use the build type specified by the user
-      const buildType = project.buildType;
-      this.emitLog(project._id, 'info', `Building as ${buildType} application`);
+      const buildType = project.buildType || 'static';
+      this.emitLog(project._id, 'info', `Deploying as ${buildType} application`);
 
-      // Build project (different for static vs server)
-      if (buildType === 'static') {
-        await this.buildProject(projectPath, project._id);
-      } else {
-        // For server apps, we'll build inside Docker
-        this.emitLog(project._id, 'info', 'Preparing server application...');
-      }
+      let deployUrl, s3Path, containerId;
 
-      let deployUrl, s3Path;
       if (buildType === 'static') {
-        // Deploy static files to S3
+        // Static deployment: build and upload to S3
+        await this.buildStaticProject(projectPath, project._id, project);
         const result = await this.deployStatic(projectPath, project._id, project);
         deployUrl = result.deployUrl;
         s3Path = result.s3Path;
+        this.emitLog(project._id, 'success', 'Static site deployed successfully');
       } else {
-        // Deploy as Docker container
+        // Server deployment: build Docker container
         const result = await this.deployServer(projectPath, project._id, project);
         deployUrl = result.deployUrl;
         containerId = result.containerId;
+        this.emitLog(project._id, 'success', 'Server application deployed successfully');
       }
 
       // Update project with deployment info
@@ -74,7 +70,7 @@ class DeploymentService {
         completedAt: new Date(),
       });
 
-      this.emitLog(project._id, 'success', `Deployment successful! Available at ${deployUrl}`);
+      this.emitLog(project._id, 'success', `Deployment complete! Available at ${deployUrl}`);
       await this.updateProjectStatus(project._id, 'running');
 
     } catch (error) {
@@ -96,8 +92,7 @@ class DeploymentService {
     this.emitLog(projectId, 'success', 'Repository cloned successfully');
   }
 
-  async buildProject(projectPath, projectId) {
-    const project = await Project.findById(projectId);
+  async buildStaticProject(projectPath, projectId, project) {
     const { rootDirectory, buildCommand } = project.buildConfig;
     
     const workingDir = path.join(projectPath, rootDirectory);
@@ -111,24 +106,28 @@ class DeploymentService {
 
       this.emitLog(projectId, 'info', `Running build command: ${buildCommand}`);
       await execAsync(buildCommand, { cwd: workingDir });
-      this.emitLog(projectId, 'success', 'Project built successfully');
+      this.emitLog(projectId, 'success', 'Static build completed successfully');
     } catch (error) {
-      throw new Error(`Build failed: ${error.message}`);
+      throw new Error(`Static build failed: ${error.message}`);
     }
   }
 
   async deployStatic(projectPath, projectId, project) {
-    this.emitLog(projectId, 'info', 'Deploying static files to S3...');
+    this.emitLog(projectId, 'info', 'Uploading static files to S3...');
 
     const { rootDirectory, publishDirectory } = project.buildConfig;
     const workingDir = path.join(projectPath, rootDirectory);
     const distPath = path.join(workingDir, publishDirectory);
-    const s3Path = `projects/${project.name}`;
+    const s3Path = `projects/${project.subDomain}`;
 
     try {
+      // Check if build directory exists
+      await fs.access(distPath);
+      
       await s3Service.uploadStaticSite(distPath, s3Path);
-      this.emitLog(projectId, 'success', 'Static files deployed successfully');
-      const deployUrl = `https://${project.subDomain}.${process.env.BASE_DOMAIN}`;
+      this.emitLog(projectId, 'success', 'Static files uploaded to S3');
+      
+      const deployUrl = `https://${project.subDomain}.${process.env.BASE_DOMAIN || 'gulamgaush.in'}`;
       return { deployUrl, s3Path };
     } catch (error) {
       throw new Error(`Static deployment failed: ${error.message}`);
@@ -136,30 +135,37 @@ class DeploymentService {
   }
 
   async deployServer(projectPath, projectId, project) {
-    this.emitLog(projectId, 'info', 'Building and deploying Docker container...');
+    this.emitLog(projectId, 'info', 'Building Docker container for server deployment...');
 
     try {
-      // Get environment variables from project
+      // Convert environment variables to proper format
       const envVars = {};
-      if (project.envVars && project.envVars instanceof Map) {
-        // Convert Map to object
-        for (let [key, value] of project.envVars) {
-          envVars[key] = value;
+      
+      if (project.envVars) {
+        if (project.envVars instanceof Map) {
+          // Convert Map to object
+          for (let [key, value] of project.envVars) {
+            envVars[key] = value;
+          }
+        } else if (typeof project.envVars === 'object') {
+          // Already an object
+          Object.assign(envVars, project.envVars);
         }
-      } else if (project.envVars && typeof project.envVars === 'object') {
-        Object.assign(envVars, project.envVars);
       }
+
+      this.emitLog(projectId, 'info', `Environment variables configured: ${Object.keys(envVars).length} variables`);
       
       const result = await dockerService.buildAndDeploy(projectPath, projectId, envVars);
-      const deployUrl = `https://${project.subDomain}.${process.env.BASE_DOMAIN || 'localhost:' + result.port}`;
-      this.emitLog(projectId, 'success', 'Container deployed successfully');
+      
+      const deployUrl = `https://${project.subDomain}.${process.env.BASE_DOMAIN || 'gulamgaush.in'}`;
+      
       return {
         deployUrl,
         containerId: result.containerId,
         port: result.port,
       };
     } catch (error) {
-      throw new Error(`Container deployment failed: ${error.message}`);
+      throw new Error(`Server deployment failed: ${error.message}`);
     }
   }
 
@@ -169,9 +175,7 @@ class DeploymentService {
   }
 
   async updateProjectDeployment(projectId, deploymentData) {
-    await Project.findByIdAndUpdate(projectId, {
-      s3Path: deploymentData.s3Path,
-      containerId: deploymentData.containerId,
+    const updateData = {
       status: deploymentData.status,
       deployUrl: deploymentData.deployUrl,
       buildType: deploymentData.buildType,
@@ -179,7 +183,19 @@ class DeploymentService {
         ...deploymentData,
         version: new Date().toISOString(),
       },
-    });
+    };
+
+    // Only set s3Path for static deployments
+    if (deploymentData.s3Path) {
+      updateData.s3Path = deploymentData.s3Path;
+    }
+
+    // Only set containerId for server deployments
+    if (deploymentData.containerId) {
+      updateData.containerId = deploymentData.containerId;
+    }
+
+    await Project.findByIdAndUpdate(projectId, updateData);
   }
 
   emitLog(projectId, level, message) {
@@ -215,15 +231,16 @@ class DeploymentService {
   }
 
   async cleanup(project) {
-    // Clean up S3 files
-    if (project.buildType === 'static' && project.currentDeployment?.s3Path) {
-      await s3Service.deleteFiles(project.currentDeployment.s3Path);
+    // Clean up S3 files for static deployments
+    if (project.buildType === 'static' && project.s3Path) {
+      this.emitLog(project._id, 'info', 'Cleaning up S3 files...');
+      await s3Service.deleteFiles(project.s3Path);
     }
 
-    // Stop and remove Docker container
-    if (project.buildType === 'server' && (project.currentDeployment?.containerId || project.containerId)) {
-      const containerId = project.currentDeployment?.containerId || project.containerId;
-      await dockerService.stopContainer(containerId);
+    // Stop and remove Docker container for server deployments
+    if (project.buildType === 'server' && project.containerId) {
+      this.emitLog(project._id, 'info', 'Stopping Docker container...');
+      await dockerService.stopContainer(project.containerId);
     }
   }
 }

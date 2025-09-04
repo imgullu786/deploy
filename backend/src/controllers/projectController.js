@@ -32,6 +32,11 @@ export const createProject = async (req, res) => {
   try {
     const { name, description, githubRepo, subDomain, buildConfig, buildType, envVars } = req.body;
 
+    // Check if subdomain is already taken
+    const existingProject = await Project.findOne({ subDomain });
+    if (existingProject) {
+      return res.status(400).json({ message: 'Subdomain is already taken' });
+    }
     const project = new Project({
       name,
       description,
@@ -39,7 +44,7 @@ export const createProject = async (req, res) => {
       subDomain,
       buildConfig: buildConfig || {},
       buildType,
-      envVars: envVars || {},
+      envVars: envVars || new Map(),
       owner: req.user._id,
     });
 
@@ -49,7 +54,7 @@ export const createProject = async (req, res) => {
     await project.save();
     res.status(201).json(project);
   } catch (error) {
-    console.log(error)
+    console.error('Create project error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

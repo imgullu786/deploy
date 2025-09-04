@@ -267,7 +267,7 @@ const CreateProject = () => {
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Available at: <strong>{formData.subDomain || "your-app"}.deployflow.app</strong>
+                  Available at: <strong>{formData.subDomain || "your-app"}.gulamgaush.in</strong>
                 </p>
               </div>
             </div>

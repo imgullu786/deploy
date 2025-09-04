@@ -54,10 +54,11 @@ const projectSchema = new mongoose.Schema({
     trim: true,
   },
   subDomain: {
-  type: String,
-  unique: true,
-  trim: true,
-},
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+  },
   envVars: {
     type: Map,
     of: String,

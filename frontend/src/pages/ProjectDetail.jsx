@@ -199,8 +199,8 @@ const ProjectDetail = () => {
                 <div className="flex items-center space-x-3">
                   <Globe className="h-5 w-5 text-gray-600" />
                   <div>
-                    <p className="text-sm font-medium text-gray-700">Custom Domain</p>
-                    <p className="text-sm text-gray-600">{project.subDomain}</p>
+                    <p className="text-sm font-medium text-gray-700">Subdomain</p>
+                    <p className="text-sm text-gray-600">{project.subDomain}.gulamgaush.in</p>
                   </div>
                 </div>
               )}
@@ -309,6 +309,30 @@ const ProjectDetail = () => {
                   )}
                 </div>
               </div>
+
+              {/* Environment Variables (for server projects) */}
+              {project.buildType === 'server' && (
+                <div className="border-t border-gray-200 pt-4">
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">Environment Variables</h3>
+                  {project.envVars && Object.keys(project.envVars).length > 0 ? (
+                    <div className="space-y-2">
+                      {Object.entries(project.envVars).map(([key, value]) => (
+                        <div key={key} className="flex items-center space-x-2 text-sm">
+                          <span className="font-mono text-gray-800 bg-gray-100 px-2 py-1 rounded min-w-0 flex-shrink-0">
+                            {key}
+                          </span>
+                          <span className="text-gray-400">=</span>
+                          <span className="font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded truncate flex-1">
+                            {value ? '••••••••' : '(empty)'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">No environment variables configured</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
