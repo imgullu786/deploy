@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Server, Globe, Github, Settings, Zap, XCircle } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 import { projectService } from '../services/projectService';
 
 const CreateProject = () => {
   const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     name: '',
     githubRepo: '',
@@ -16,21 +18,39 @@ const CreateProject = () => {
       buildCommand: 'npm run build',
       publishDirectory: 'dist',
     },
-    envVars: {},
+    // IMPORTANT: envVars is now an array with stable ids
+    envVars: [], // [{ id, name, value }]
   });
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // ---------- handlers ----------
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const newProject = await projectService.createProject(formData);
+      // Convert envVars array -> object expected by backend
+      const envVarsObject =
+        formData.buildType === 'server'
+          ? formData.envVars.reduce((acc, { name, value }) => {
+              const key = (name || '').trim();
+              if (key) acc[key] = value ?? '';
+              return acc;
+            }, {})
+          : {};
+
+      const payload = {
+        ...formData,
+        envVars: envVarsObject,
+      };
+
+      const newProject = await projectService.createProject(payload);
       navigate(`/project/${newProject._id}`);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to create project');
     } finally {
       setLoading(false);
     }
@@ -38,7 +58,7 @@ const CreateProject = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
+
     if (name.startsWith('buildConfig.')) {
       const configKey = name.split('.')[1];
       setFormData((prev) => ({
@@ -57,65 +77,60 @@ const CreateProject = () => {
   };
 
   const handleTypeChange = (type) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       buildType: type,
-      buildConfig: type === 'static' ? {
-        rootDirectory: '.',
-        buildCommand: 'npm run build',
-        publishDirectory: 'dist',
-      } : {
-        rootDirectory: '.',
-        buildCommand: 'npm start',
-        publishDirectory: '.',
-      }
+      // Reset buildConfig based on type
+      buildConfig:
+        type === 'static'
+          ? {
+              rootDirectory: '.',
+              buildCommand: 'npm run build',
+              publishDirectory: 'dist',
+            }
+          : {
+              rootDirectory: '.',
+              buildCommand: 'npm start',
+              publishDirectory: '.',
+            },
+      // Clear envVars when switching away from server to avoid confusion
+      envVars: type === 'server' ? prev.envVars : [],
     }));
   };
 
+  // ---------- env var helpers (array with stable ids) ----------
   const addEnvVar = () => {
-    const key = `ENV_VAR_${Object.keys(formData.envVars).length + 1}`;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      envVars: {
+      envVars: [
         ...prev.envVars,
-        [key]: '',
-      },
+        { id: uuidv4(), name: `ENV_VAR_${prev.envVars.length + 1}`, value: '' },
+      ],
     }));
   };
 
-  const removeEnvVar = (key) => {
-    setFormData(prev => {
-      const newEnvVars = { ...prev.envVars };
-      delete newEnvVars[key];
-      return {
-        ...prev,
-        envVars: newEnvVars,
-      };
-    });
+  const removeEnvVar = (id) => {
+    setFormData((prev) => ({
+      ...prev,
+      envVars: prev.envVars.filter((v) => v.id !== id),
+    }));
   };
 
-  const updateEnvVar = (oldKey, newKey, value) => {
-    setFormData(prev => {
-      const newEnvVars = { ...prev.envVars };
-      if (oldKey !== newKey) {
-        delete newEnvVars[oldKey];
-      }
-      newEnvVars[newKey] = value;
-      return {
-        ...prev,
-        envVars: newEnvVars,
-      };
-    });
+  const updateEnvVar = (id, patch) => {
+    setFormData((prev) => ({
+      ...prev,
+      envVars: prev.envVars.map((v) => (v.id === id ? { ...v, ...patch } : v)),
+    }));
   };
 
   const addCommonEnvVar = (key, value = '') => {
-    setFormData(prev => ({
-      ...prev,
-      envVars: {
-        ...prev.envVars,
-        [key]: value,
-      },
-    }));
+    setFormData((prev) => {
+      if (prev.envVars.some((v) => v.name === key)) return prev; // avoid duplicates
+      return {
+        ...prev,
+        envVars: [...prev.envVars, { id: uuidv4(), name: key, value }],
+      };
+    });
   };
 
   const applyPreset = (preset) => {
@@ -142,7 +157,7 @@ const CreateProject = () => {
       },
       'express-server': {
         rootDirectory: '.',
-        buildCommand: 'npm install',
+        buildCommand: 'npm install', // installs prod deps in container or during build step
         publishDirectory: '.',
       },
       'nextjs-server': {
@@ -152,12 +167,13 @@ const CreateProject = () => {
       },
     };
 
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       buildConfig: presets[preset],
     }));
   };
 
+  // ---------- UI ----------
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6">
       <div className="max-w-4xl mx-auto">
@@ -196,7 +212,11 @@ const CreateProject = () => {
                 }`}
               >
                 <div className="flex items-center space-x-3 mb-3">
-                  <Globe className={`h-6 w-6 ${formData.buildType === 'static' ? 'text-indigo-600' : 'text-gray-500'}`} />
+                  <Globe
+                    className={`h-6 w-6 ${
+                      formData.buildType === 'static' ? 'text-indigo-600' : 'text-gray-500'
+                    }`}
+                  />
                   <h3 className="text-lg font-semibold text-gray-900">Static Site</h3>
                 </div>
                 <p className="text-sm text-gray-600 mb-3">
@@ -217,7 +237,11 @@ const CreateProject = () => {
                 }`}
               >
                 <div className="flex items-center space-x-3 mb-3">
-                  <Server className={`h-6 w-6 ${formData.buildType === 'server' ? 'text-indigo-600' : 'text-gray-500'}`} />
+                  <Server
+                    className={`h-6 w-6 ${
+                      formData.buildType === 'server' ? 'text-indigo-600' : 'text-gray-500'
+                    }`}
+                  />
                   <h3 className="text-lg font-semibold text-gray-900">Server Application</h3>
                 </div>
                 <p className="text-sm text-gray-600 mb-3">
@@ -267,7 +291,7 @@ const CreateProject = () => {
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Available at: <strong>{formData.subDomain || "your-app"}.gulamgaush.in</strong>
+                  Available at: <strong>{formData.subDomain || 'your-app'}.gulamgaush.in</strong>
                 </p>
               </div>
             </div>
@@ -387,12 +411,10 @@ const CreateProject = () => {
                   placeholder="."
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 font-mono text-sm"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Directory containing package.json
-                </p>
+                <p className="text-xs text-gray-500 mt-1">Directory containing package.json</p>
               </div>
 
-              {/* Build Command */}
+              {/* Build/Start Command */}
               <div>
                 <label htmlFor="buildCommand" className="block text-sm font-semibold text-gray-700 mb-2">
                   {formData.buildType === 'static' ? 'Build Command' : 'Start Command'}
@@ -407,7 +429,9 @@ const CreateProject = () => {
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 font-mono text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  {formData.buildType === 'static' ? 'Command to build your project' : 'Command to start your server'}
+                  {formData.buildType === 'static'
+                    ? 'Command to build your project'
+                    : 'Command to start your server'}
                 </p>
               </div>
 
@@ -426,9 +450,7 @@ const CreateProject = () => {
                     placeholder="dist"
                     className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 font-mono text-sm"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Directory containing built files
-                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Directory containing built files</p>
                 </div>
               )}
             </div>
@@ -476,12 +498,12 @@ const CreateProject = () => {
               <div className="mb-4">
                 <p className="text-sm font-semibold text-gray-700 mb-2">Quick Add Common Variables</p>
                 <div className="flex flex-wrap gap-2">
-                  {['NODE_ENV', 'PORT', 'DATABASE_URL', 'JWT_SECRET', 'API_KEY'].map(envKey => (
+                  {['NODE_ENV', 'PORT', 'DATABASE_URL', 'JWT_SECRET', 'API_KEY'].map((envKey) => (
                     <button
                       key={envKey}
                       type="button"
                       onClick={() => addCommonEnvVar(envKey)}
-                      disabled={formData.envVars.hasOwnProperty(envKey)}
+                      disabled={formData.envVars.some((v) => v.name === envKey)}
                       className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {envKey}
@@ -492,12 +514,12 @@ const CreateProject = () => {
 
               {/* Environment Variables List */}
               <div className="space-y-3">
-                {Object.entries(formData.envVars).map(([key, value]) => (
-                  <div key={key} className="flex items-center space-x-3">
+                {formData.envVars.map(({ id, name, value }) => (
+                  <div key={id} className="flex items-center space-x-3">
                     <input
                       type="text"
-                      value={key}
-                      onChange={(e) => updateEnvVar(key, e.target.value, value)}
+                      value={name}
+                      onChange={(e) => updateEnvVar(id, { name: e.target.value })}
                       placeholder="VARIABLE_NAME"
                       className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 font-mono text-sm"
                     />
@@ -505,22 +527,22 @@ const CreateProject = () => {
                     <input
                       type="text"
                       value={value}
-                      onChange={(e) => updateEnvVar(key, key, e.target.value)}
+                      onChange={(e) => updateEnvVar(id, { value: e.target.value })}
                       placeholder="value"
                       className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400 font-mono text-sm"
                     />
                     <button
                       type="button"
-                      onClick={() => removeEnvVar(key)}
+                      onClick={() => removeEnvVar(id)}
                       className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <XCircle className="h-4 w-4" />
                     </button>
                   </div>
                 ))}
-                
-                {Object.keys(formData.envVars).length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
+
+                {formData.envVars.length === 0 && (
+                  <div className="text-center py-8 text-gray-505">
                     <Settings className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm">No environment variables configured</p>
                     <p className="text-xs">Click "Add Variable" to add environment variables for your server</p>
@@ -535,7 +557,7 @@ const CreateProject = () => {
                   <div>
                     <h4 className="text-sm font-semibold text-blue-900 mb-1">Environment Variables</h4>
                     <p className="text-sm text-blue-700">
-                      These variables will be available in your server application at runtime. 
+                      These variables will be available in your server application at runtime.
                       Common examples include database URLs, API keys, and configuration settings.
                     </p>
                   </div>
