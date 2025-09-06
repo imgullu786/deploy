@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Rocket } from 'lucide-react';
+import { Rocket, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -33,78 +34,115 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center px-4">
-      <div className="bg-white/90 backdrop-blur-xl p-8 rounded-2xl shadow-xl w-full max-w-md border border-white/20">
-        {/* Logo + Title */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <Rocket className="h-12 w-12 text-yellow-400 drop-shadow-md" />
+    <div className="min-h-screen bg-bg-primary grid-pattern flex items-center justify-center px-4 relative overflow-hidden">
+      {/* Background effects */}
+      <div className="absolute inset-0 bg-gradient-to-br from-accent-primary/10 via-transparent to-accent-secondary/10"></div>
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-accent-primary/5 rounded-full blur-3xl animate-float"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent-secondary/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '3s' }}></div>
+
+      <div className="relative w-full max-w-md">
+        {/* Logo Section */}
+        <div className="text-center mb-12 animate-fade-in">
+          <div className="flex justify-center mb-6">
+            <div className="relative">
+              <Rocket className="h-16 w-16 text-accent-primary drop-shadow-lg animate-glow" />
+              <div className="absolute inset-0 h-16 w-16 text-accent-primary opacity-20 blur-lg"></div>
+            </div>
           </div>
-          <h1 className="text-3xl font-extrabold text-gray-900">Welcome Back</h1>
-          <p className="text-gray-600 mt-2">Sign in to continue</p>
+          <h1 className="text-4xl font-black text-text-primary mb-2">
+            Welcome to <span className="text-gradient">DeployEasy</span>
+          </h1>
+          <p className="text-text-secondary">Sign in to continue your deployment journey</p>
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm font-medium">
-            {error}
-          </div>
-        )}
+        {/* Login Card */}
+        <div className="card p-8 animate-slide-up">
+          {/* Error Alert */}
+          {error && (
+            <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium animate-slide-up">
+              {error}
+            </div>
+          )}
 
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              placeholder="Enter your email"
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400"
-            />
-          </div>
+          {/* Login Form */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="email" className="block text-sm font-semibold text-text-primary mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                placeholder="Enter your email"
+                className="input-field"
+              />
+            </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              placeholder="Enter your password"
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder-gray-400"
-            />
-          </div>
+            <div>
+              <label htmlFor="password" className="block text-sm font-semibold text-text-primary mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  placeholder="Enter your password"
+                  className="input-field pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-muted hover:text-accent-primary transition-colors"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold shadow-md hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-
-        {/* Sign up link */}
-        <div className="text-center mt-6">
-          <p className="text-gray-600 text-sm">
-            Don’t have an account?{' '}
-            <Link
-              to="/signup"
-              className="text-indigo-600 hover:text-purple-600 font-medium transition-colors"
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full btn-primary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign up
-            </Link>
-          </p>
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-black border-t-transparent"></div>
+                  <span>Signing in...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight className="h-5 w-5" />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Sign up link */}
+          <div className="text-center mt-8 pt-6 border-t border-border-primary">
+            <p className="text-text-secondary text-sm">
+              Don't have an account?{' '}
+              <Link
+                to="/signup"
+                className="text-accent-primary hover:text-accent-secondary font-semibold transition-colors"
+              >
+                Create one now
+              </Link>
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center mt-8 text-text-muted text-xs">
+          <p>© 2024 DeployEasy. Secure deployment platform.</p>
         </div>
       </div>
     </div>
